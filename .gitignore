@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+checkpoints/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.env
+
+# Generation results are large and reproducible from the pipeline --
+# tracked selectively in results/ instead if you want to commit specific
+# runs as evidence.
