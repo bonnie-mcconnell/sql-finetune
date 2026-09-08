@@ -1,0 +1,5 @@
+# Test/lint-only dependencies, not needed to run src/train.py or
+# src/serve.py, only to run the test suite and linter locally or in CI.
+pytest==8.4.2
+httpx==0.28.1
+ruff==0.16.6

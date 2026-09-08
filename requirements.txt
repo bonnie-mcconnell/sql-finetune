@@ -1,0 +1,12 @@
+# Full project (training + serving). Exact versions verified together
+# end-to-end (real training run + real FastAPI serving test against the
+# merged model).
+# Built from requirements-serve.txt (itself built from
+# requirements-core.txt) plus the training-only packages, so a shared
+# package's version only needs to change in one place. 
+-r requirements-serve.txt
+datasets==5.0.1
+accelerate==1.14.0
+peft==0.20.0
+torchao==0.18.0
+trl==1.12.0
