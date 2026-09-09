@@ -244,10 +244,10 @@ represents a CTE reference identically to a real table reference.
 
 ```
 Spider (xlangai/spider)          spider-schema (richardr1126/spider-schema)
-   question + gold SQL     ⟶ join by db_id ⟵      table/column schema
+   question + gold SQL  ⟶ join by db_id ⟵  table/column schema
               │
               ▼
-   ChatML prompt (system + schema + question) ── ── tokenize ── mask prompt tokens
+   ChatML prompt (system + schema + question) -> tokenize -> mask prompt tokens
               │
               ▼
    Qwen2.5-Coder-3B-Instruct (fp16) + LoRA adapters (r=16, 0.96% trainable)
