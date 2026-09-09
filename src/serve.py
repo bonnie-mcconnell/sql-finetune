@@ -119,7 +119,7 @@ def _tables_referenced(sql: str, dialect: str = "sqlite") -> frozenset[str]:
     structural search not `tree.args.get("with")` raw dict-key lookup for version
     control. Raises on unparseable SQL, callers handle this.
     """
-    tree = sqlglot.parse(sql, read=dialect)
+    tree = sqlglot.parse_one(sql, read=dialect)
     with_node = tree.find(exp.With)
     cte_names = (
         {cte.alias.lower() for cte in with_node.expressions if cte.alias} if with_node else set()
