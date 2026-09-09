@@ -82,7 +82,7 @@ def test_exact_set_match_distinguishes_comparison_operators():
 
 
 def test_exact_set_match_distinguishes_and_from_or():
-    # AND (must satisfy both) and OR (either one) must never compare equal, even with identical operands.
+    # AND and OR must never compare equal, even with identical operands.
     assert exact_set_match(
         "SELECT * FROM t WHERE age > 20 AND country = 'France'",
         "SELECT * FROM t WHERE age > 20 OR country = 'France'",
@@ -111,7 +111,8 @@ def test_exact_set_match_distinguishes_having():
 
 
 def test_exact_set_match_never_raises_on_garbage_input():
-    # Malformed SQL must score False, not propagate a parser exception so evlauation loop never crashes 
+    # Malformed SQL must score False, not propagate a parser exception 
+    # so evlauation loop never crashes 
     assert exact_set_match("SELECT * FROM t", "((( not sql") is False
 
 

@@ -14,7 +14,6 @@ from trl import SFTConfig, SFTTrainer
 
 from .data import build_training_datasets
 
-
 MODEL_NAME = "Qwen/Qwen2.5-Coder-3B-Instruct"
 MAX_LENGTH = 768
 OUTPUT_DIR = "checkpoints"
@@ -64,7 +63,8 @@ def main():
         tokenizer=tokenizer, padding=True, label_pad_token_id=-100
     )
 
-    # warmup_steps computed from the loaded dataset size, because hardcoded value woudl go stale if anything changed
+    # warmup_steps computed from the loaded dataset size, 
+    # because hardcoded value would go stale if anything changed
     effective_batch_size = PER_DEVICE_TRAIN_BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS
     steps_per_epoch = math.ceil(len(train_ds) / effective_batch_size)
     total_steps = steps_per_epoch * NUM_TRAIN_EPOCHS
