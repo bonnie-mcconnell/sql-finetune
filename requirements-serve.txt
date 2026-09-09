@@ -1,0 +1,16 @@
+# Deployment/Docker-only: everything src/serve.py needs to actually run
+# serve.py never imports peft/trl/accelerate/torchao/datasets,
+# are training-only, and bundling them into the serving image is
+# dead weight (bigger image, slower cold start, larger dependency
+# surface for a security scan to flag) for a process that only ever
+# loads a merged model and runs inference.
+#
+# torch's "+cu128" build tag ties it to CUDA 12.8 specifically. On a
+# machine with a different CUDA version (or CPU-only), install a
+# matching torch build from https://pytorch.org/get-started/locally/
+# instead of this exact line.
+# CUDA-tagged version like this can't just be pip-installed
+# without --extra-index-url in the first place.
+-r requirements-core.txt
+torch==2.11.0+cu128
+uvicorn==0.52.4

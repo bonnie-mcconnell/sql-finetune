@@ -1,0 +1,8 @@
+# Shared by requirements-ci.txt and requirements-serve.txt
+# everything src/serve.py + src/evaluate.py need at import time, 
+# minus torch (lazy import in both modules) and minus `datasets` 
+fastapi==0.141.1
+numpy==2.1.3
+pydantic==2.13.4
+sqlglot==25.20.2
+transformers==5.16.1

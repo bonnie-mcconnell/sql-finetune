@@ -1,0 +1,6 @@
+# CI/test-only: requirements-core.txt plus `datasets`, which test_data.py
+# needs transitively (it imports src.data, and src/data.py does
+# `from datasets import load_dataset` at module level even though the
+# tests in test_data.py never call build_training_datasets itself).
+-r requirements-core.txt
+datasets==5.0.1
