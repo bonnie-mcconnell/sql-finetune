@@ -6,7 +6,7 @@
 Fine-tunes `Qwen2.5-Coder-3B-Instruct` on the [Spider](https://yale-lily.github.io/spider)
 text-to-SQL benchmark, with a statistically-backed before/after evaluation
 and a minimal serving layer, built to demonstrate the full LLM engineering
-stack (data pipeline → training → rigorous evaluation → deployment).
+stack (data pipeline -> training -> rigorous evaluation -> deployment).
 
 ## Results
 
@@ -23,6 +23,7 @@ stack (data pipeline → training → rigorous evaluation → deployment).
 - [Error analysis](#error-analysis)
 - [Key engineering decisions](#key-engineering-decisions)
 - [Efficiency: adapter vs. merged](#efficiency-adapter-vs-merged)
+- [Serving](#serving)
 - [Known limitations](#known-limitations)
 - [Architecture](#architecture)
 - [Running it](#running-it)
@@ -34,17 +35,16 @@ Both models were given the identical zero-shot prompt format (system
 instruction + serialized schema + question, see `src/data.py`) and scored
 with **exact-set-match**: generated and gold SQL are each parsed into
 structural components (SELECT columns, DISTINCT usage, tables, WHERE
-conditions, GROUP BY, HAVING conditions, ORDER BY, and LIMIT) via a real
-SQL parser (`sqlglot`), and compared as unordered, case/whitespace-
-insensitive sets, so `SELECT name, age` and `SELECT age, name` count as
-equivalent, but an actually different query does not.
+conditions, GROUP BY, HAVING conditions, ORDER BY, and LIMIT) via a
+SQL parser (`sqlglot`), and compared as unordered & case/whitespace-
+insensitive sets, so `SELECT name, age` and `SELECT age, name` are scored as equivalent.
 
-Under this specific zero-shot prompt
+Using this specific zero-shot prompt
 and schema format, fine-tuning improved exact-match accuracy from 21% to
 50%. This project does not claim that 21% represents the base model's best possible
 zero-shot performance - a different prompt format (few-shot examples,
-standard `CREATE TABLE` schema serialization) could plausibly raise the
-baseline independent of fine-tuning. The comparison between the two numbers
+standard `CREATE TABLE` schema serialization) could raise the
+baseline independent of fine-tuning. Comparing exact match-accuracy for both models
 is internally valid (identical conditions, isolating fine-tuning's effect) but
 the baseline's absolute value should not be read as a ceiling.
 
@@ -52,8 +52,8 @@ the baseline's absolute value should not be read as a ceiling.
 
 Every generated/gold pair is also classified into a single primary failure
 category (`src/evaluate.py::categorize_error`), checked in order from most
-to least structurally fundamental (tables → columns → distinct → where →
-group → having → order → limit), reporting only the first mismatch found:
+to least structurally fundamental (tables -> columns -> distinct -> where ->
+group -> having -> order -> limit), reporting only the first mismatch found:
 
 | Category | Base | Fine-tuned |
 |---|---|---|
@@ -70,13 +70,13 @@ group → having → order → limit), reporting only the first mismatch found:
 Fine-tuning substantially improved schema grounding (table
 selection errors nearly halved, column selection errors dropped by more
 than two-thirds) but had essentially no effect on WHERE-clause condition
-correctness (9.2% → 10.3%, within noise) or DISTINCT usage (1.9% → 1.9%,
+correctness (9.2% -> 10.3%, within noise) or DISTINCT usage (1.9% -> 1.9%,
 unchanged). This makes sense as schema-paired training
 examples directly teach "which table/column for this kind of question",
 while getting filter logic, deduplication, and other query-semantic
 details right is a different and harder skill that this fine tuning data didn't improve.
 
-**Methodological caveat:** because only the first mismatch is reported per
+Because only the first mismatch is reported per
 example, a category's count can shift simply because fewer examples are
 now being caught earlier by a table/column mismatch, which surfaces
 previously-masked mismatches further down the ladder for the first time, but not necessarily because that specific error type got objectively worse in the data.
@@ -84,17 +84,16 @@ Read the wrong_grouping/wrong_ordering upticks with that in mind.
 
 ## Key engineering decisions
 
-**QLoRA → plain LoRA, mid-project, backed by measurement.** Initially
-implemented QLoRA (4-bit NF4 quantization + LoRA adapters), which is the standard
-approach for fine-tuning on constrained hardware. Direct profiling showed
-the quantized model used only ~2.0GB of the training GPU's 15GB, so memory constraints weren't actually an issue on this hardware. Quantization was also the root cause of a
+**QLoRA -> plain LoRA:** Initially
+implemented QLoRA (4-bit NF4 quantization + LoRA adapters). Direct profiling showed
+the quantized model used only ~2.0GB of the training GPU's 15GB, so memory constraints weren't an issue on this hardware. Quantization was also the root cause of a
 recurring `bitsandbytes`/mixed-precision dtype instability during
 training (a stray internal `bfloat16` tensor crashing PyTorch's fp16
 gradient scaler, regardless of every model- and trainer-level dtype
 setting tried). Switching to plain LoRA on an unquantized fp16 model
 (`transformers.AutoModelForCausalLM`, no `BitsAndBytesConfig`) resolved
 the crash and cut per-step training time roughly 5-6x by
-removing per-step dequantization overhead (~55-63s/step quantized →
+removing per-step dequantization overhead (~55-63s/step quantized ->
 ~10.3s/step unquantized, measured on the same hardware and batch config).
 
 **Checkpoint selection via validation loss, not the last epoch.** Training
@@ -107,6 +106,14 @@ ran 3 epochs with per-epoch evaluation:
 | 3 | 0.014 | 0.361 |
 
 Training loss falls monotonically, validation loss rises after epoch 1, which is textbook overfitting. The epoch-1 checkpoint was selected as the final model, not the epoch-3 (last) checkpoint. All reported results use the epoch-1 checkpoint.
+
+After noticing this overfitting trend from epoch-1 onward, several follow-up experiments were run to check whether that boundary was of the model/data or of the training method. 
+
+- **Experiment 1:** Doubled lora_dropout from 0.05 -> 0.1 with everything else held identical. Result: epoch-1 eval_loss = 0.2362, unchanged from the original epoch 1, and the same overfitting shape was present at epochs 2/3. Mean token accuracy independently peaked at epoch 1 as well (0.936 -> 0.933 -> 0.933), agreeing with the loss signal. Regularising the adapter path didn't change anything, indicating that this isn't a capacity-control issue.
+
+- **Experiment 2:** Experimented with checkpoint granularity by switching from checkpointing only at epoch boundraries to every 100 steps for a 9x finer resolution, to check whether the coarse epoch-1 snapshot was missing a better point elsewhere. The minimum loss was found at step 200, eval_loss = 0.2282, which is 0.0002 lower than the original epoch-1 checkpoint's loss of 0.2284. It rose again at step 300 and partially recovered by 400, all indicating that these loss changes were noise.
+
+This model, on this dataset, seems to move from learning to memorizing dataset noise early on in training, around the one-epoch mark, due to the model-size/dataset-size/task combination, not any particular training parameter tested.
 
 **Train/validation database overlap: 0/166.** Verified directly
 (`len(set(train_db_ids) & set(val_db_ids)) == 0`). The validation set
@@ -128,16 +135,15 @@ claiming exactly that (it happened to still catch operator/connective
 differences, since those produce different literal text, but silently
 failed the one case it was meant to handle: `age > 20 AND country = 'X'`
 vs. the logically-identical `country = 'X' AND age > 20` scored as not
-a match). Separately, the scorer had no concept of `LIMIT`, `DISTINCT`, or
-`HAVING` at all. Fixed (explicit AND-conjunct
+a match). Separately, the scorer didn't check for `LIMIT`, `DISTINCT`, or
+`HAVING` initially. Fixed (explicit AND-conjunct
 splitting that preserves comparison operators and never decomposes OR and
 added `distinct`/`having`/`limit` as scored components) and re-run against
 the real, saved 1,034-example results in `results/`: base accuracy moved
-21.95%→21.0%, fine-tuned 51.26%→50.2% — both down by roughly the same
+21.95%->21.0%, fine-tuned 51.26%->50.2%, both down by roughly the same
 ~1 point, consistent with correcting a symmetric measurement bias rather
 than something that happened to favor one model. The statistically
-significant improvement survives the correction unchanged. The numbers
-throughout this README are post-fix.
+significant improvement was unchanged and numbers in this README are post-fix.
 `tests/test_results_reproduce_readme.py` pins them against regression.
 
 **Tokenizer versioning:** Every
@@ -157,7 +163,7 @@ exact-pinned versions (`requirements-dev.txt` for test/lint tools).
 
 ## Efficiency: adapter vs. merged
 
-Single-example generation latency, measured on the same GPU, same 50-example sample (first 5 discarded as warmup), greedy decoding:
+Single-example generation latency measured on the same GPU, using the same 50-example sample (first 5 discarded as warmup), greedy decoding:
 
 | Model | Latency (s/example) |
 |---|---|
@@ -166,8 +172,10 @@ Single-example generation latency, measured on the same GPU, same 50-example sam
 | Fine-tuned, merged (`merge_and_unload()`) | 2.583 |
 
 An unmerged LoRA adapter **more than doubles** per-example latency versus
-the base model on this hardware, because every adapted layer pays for a frozen base-weight matmul *and* a separate small adapter matmul, on every forward pass, at every generation step. Merging (`model.merge_and_unload()`, which computes `W_base + (B @ A * scaling)` once and folds it into ordinary weights) recovers 95.2% of that overhead, landing within ~6% of the base model's latency. Always merge the model before deployment to decrease unneccessary latency.
+the base model on this hardware, because every adapted layer pays for a frozen base-weight matmul *and* a separate small adapter matmul, on every forward pass, at every generation step. Merging (`model.merge_and_unload()`, which computes `W_base + (B @ A * scaling)` once and folds it into ordinary weights) recovers 95.2% of that overhead, landing within ~6% of the base model's latency. Always merge the model before deployment to decrease unnecessary latency.
 `src/serve.py` loads the merged model for this reason.
+
+## Serving
 
 **The read-only-SQL guardrail as an allowlist checking the whole tree:** `_is_read_only`
 parses generated SQL with `sqlglot` and checks that every statement is
@@ -244,7 +252,7 @@ represents a CTE reference identically to a real table reference.
 
 ```
 Spider (xlangai/spider)          spider-schema (richardr1126/spider-schema)
-   question + gold SQL  ⟶ join by db_id ⟵  table/column schema
+   question + gold SQL  -> join by db_id <-  table/column schema
               │
               ▼
    ChatML prompt (system + schema + question) -> tokenize -> mask prompt tokens
@@ -268,8 +276,8 @@ Spider (xlangai/spider)          spider-schema (richardr1126/spider-schema)
    paired bootstrap 95% CI on accuracy delta
               │
               ▼
-   merge_and_unload() → merged model → latency benchmark (base vs. adapter
-                                        vs. merged) → FastAPI /generate endpoint
+   merge_and_unload() -> merged model -> latency benchmark (base vs. adapter
+                                        vs. merged) -> FastAPI /generate endpoint
 ```
 
 ## Running it
@@ -332,6 +340,4 @@ tests/
 Dockerfile          # containerizes src/serve.py
 LICENSE             # MIT
 pyproject.toml      # ruff lint config (enforced in CI)
-results/
-  base_results.json, finetuned_results.json  # full 1,034-example generations
 ```
