@@ -17,11 +17,10 @@ from sqlglot import exp
 
 from .evaluate import generate_sql
 
-# torch and transformers are imported lazily, which keeps this file 
-# usable/testable in CI without ML stack installed
+# torch and transformers imported lazily for testing/CI
 
 MODEL_PATH = "checkpoints/merged"  # output of model.merge_and_unload().save_pretrained(...)
-TOKENIZER_NAME = "Qwen/Qwen2.5-Coder-3B-Instruct"  # the base model repo, not MODEL_PATH
+TOKENIZER_NAME = "Qwen/Qwen2.5-Coder-3B-Instruct"  # the base model repo
 
 app = FastAPI(title="Text-to-SQL Service")
 
@@ -39,14 +38,9 @@ def get_model_and_tokenizer():
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         # Tokenizer loaded from the original model repo, not MODEL_PATH.
-        # LoRA fine-tuning and merging never touch the tokenizer or its
-        # chat template, it's unchanged from the base model.
-        # Loading from the canonical source instead of a saved local copy
-        # avoids a bug observed in testing: a tokenizer saved by
-        # one transformers version can silently lose its chat
-        # template when loaded by a much newer one (the library changed
-        # where the template is expected to live between versions)
-        # loading fresh from the Hub avoids this.
+        # because it's unchanged by finetuning, and a tokenizer saved by
+        # one transformers version can lose its chat template when loaded by 
+        # a much newer one, loading fresh from the Hub avoids this.
         _tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
         _model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH, device_map="auto", dtype=torch.float16

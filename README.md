@@ -27,6 +27,7 @@ stack (data pipeline -> training -> rigorous evaluation -> deployment).
 - [Known limitations](#known-limitations)
 - [Architecture](#architecture)
 - [Running it](#running-it)
+- [Demo](#demo)
 - [Repo layout](#repo-layout)
 
 ## What this measures
@@ -316,6 +317,12 @@ transitively because `test_data.py` imports `src.data`) but never torch
 (tests import it lazily).
 `requirements-core.txt` is the package list common to the other two, so
 a shared version only needs to change in one place.
+
+## Demo
+
+A short walkthrough of the running FastAPI server showing a generation, a schema-mismatch case, input validation and the read-only guardrail catching a destructive statement inside a CTE.
+
+![Demo](docs/demo.gif)
 
 ## Repo layout
 
