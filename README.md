@@ -10,10 +10,10 @@ stack (data pipeline -> training -> rigorous evaluation -> deployment).
 
 ## Results
 
-| | Base model (zero-shot) | Fine-tuned (LoRA, epoch 1) |
-|---|---|---|
-| Exact-set-match accuracy | 21.0% | 50.2% |
-| n (full validation set) | 1,034 | 1,034 |
+| | Base (zero-shot) | Base (3-shot) | Fine-tuned (LoRA, epoch 1) |
+|---|---|---|---|
+| Exact-set-match accuracy | 21.0% | 36.9% | 50.2% |
+| n (full validation set) | 1,034 | 1,034 | 1,034 |
 
 **Improvement: +29.2 points, 95% bootstrap CI [26.0, 32.3]:** this interval excludes zero, so this is a statistically real effect on this evaluation set.
 
@@ -21,6 +21,7 @@ stack (data pipeline -> training -> rigorous evaluation -> deployment).
 
 - [What this measures](#what-this-measures)
 - [Error analysis](#error-analysis)
+- [How much did training actually buy?](#how-much-did-training-actually-buy)
 - [Key engineering decisions](#key-engineering-decisions)
 - [Efficiency: adapter vs. merged](#efficiency-adapter-vs-merged)
 - [Serving](#serving)
@@ -82,6 +83,35 @@ example, a category's count can shift simply because fewer examples are
 now being caught earlier by a table/column mismatch, which surfaces
 previously-masked mismatches further down the ladder for the first time, but not necessarily because that specific error type got objectively worse in the data.
 Read the wrong_grouping/wrong_ordering upticks with that in mind.
+
+## How much did training actually buy?
+
+Experimented on improving the zero-shot baseline with no training by giving the base model a few solved examples directly in the prompt as few-shot/in-context learning, which costs no GPU time and no gradient updates. 3 fixed examples were prepended to every prompt, one example each of a plain single-table query, a query with JOIN, and a query with GROUP BY, selected deterministically from the first matching example of each shape found in the training split. 
+
+| | Base (zero-shot) | Base (3-shot) | Fine-tuned |
+|---|---|---|---|
+| Exact-set-match accuracy | 21.0% | 36.9% | 50.2% |
+
+**Few-shot vs. zero-shot base: +16.0 points, 95% CI [13.4, 18.6].**
+**Fine-tuned vs. few-shot base: +13.3 points, 95% CI [10.3, 16.2].**
+Both intervals exclude zero. Roughly half of the total improvement over
+zero-shot is available with no training simply by showing the model three worked examples, but fine-tuning still adds a further statistically real improvement on top of that.
+
+Breaking this down by error category:
+
+| Category | Base | Few-shot | Fine-tuned |
+|---|---|---|---|
+| correct | 21.0% | 36.9% | 50.2% |
+| wrong_tables | 49.0% | 39.7% | 28.2% |
+| wrong_columns | 15.8% | 5.8% | 4.5% |
+| wrong_conditions | 9.2% | 11.9% | 10.3% |
+| wrong_distinct | 1.9% | 1.5% | 1.9% |
+| wrong_ordering | 1.4% | 2.4% | 1.8% |
+| wrong_grouping | 0.9% | 1.5% | 2.3% |
+| unparseable | 0.5% | 0.1% | 0.3% |
+| wrong_having | 0.4% | 0.2% | 0.3% |
+
+This round of few-shot prompting was able to fix most of the `wrong_columns` errors by itself (15.8% -> 5.8%), likely because column selection benefits from direct pattern-matching against the shown examples. `wrong_tables` improves with either approach, more so with fine tuning. `wrong_conditions` and `wrong_grouping` appear to get worse under few-shot that the plain zero-shot baseline, and fine tuning doesn't seem to improve these error categories. However, this could be due to the first-match error selection method used here, with fine tuning's removing earlier errors allowing the later errors to be observed, while the base model obscures them with earlier errors, reporting a false number. For few-shot regression specifically, the three examples were selected for table/join/group-by logic, not for demonstrating WHERE-clause logic, so they might bias the model toward answers that don't generalize to conditions.
 
 ## Key engineering decisions
 
@@ -334,7 +364,8 @@ src/
                 # paired bootstrap
   serve.py      # FastAPI serving layer (merged model, read-only-SQL guardrail)
 results/
-  base_results.json, finetuned_results.json  # full 1,034-example generations
+  base_results.json, finetuned_results.json, fewshot_results.json  # full 1,034-example generations
+
                             
 tests/
   test_data.py                    # prompt formatting + masking-boundary correctness
