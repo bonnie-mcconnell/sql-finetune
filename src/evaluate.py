@@ -108,6 +108,8 @@ def get_component_sets(sql: str, dialect: str = "sqlite") -> dict:
     tree = sqlglot.parse_one(sql, read=dialect)
 
     select = tree.find(exp.Select)
+    if select is None:
+        raise ValueError("No SELECT statement found in SQL: {sql!r}")
     select_exprs = frozenset(_normalize_expr(e, dialect) for e in select.expressions)
     distinct = select.args.get("distinct") is not None
 

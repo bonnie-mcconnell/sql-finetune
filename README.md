@@ -132,15 +132,15 @@ ran 3 epochs with per-epoch evaluation:
 
 | Epoch | Train loss | Validation loss |
 |---|---|---|
-| 1 | 0.093 | 0.228 |
-| 2 | 0.039 | 0.289 |
-| 3 | 0.014 | 0.361 |
+| 1 | 0.0935 | 0.2284 |
+| 2 | 0.0388 | 0.2888 |
+| 3 | 0.0137 | 0.3611 |
 
 Training loss falls monotonically, validation loss rises after epoch 1, which is textbook overfitting. The epoch-1 checkpoint was selected as the final model, not the epoch-3 (last) checkpoint. All reported results use the epoch-1 checkpoint.
 
 After noticing this overfitting trend from epoch-1 onward, several follow-up experiments were run to check whether that boundary was of the model/data or of the training method. 
 
-- **Experiment 1:** Doubled lora_dropout from 0.05 -> 0.1 with everything else held identical. Result: epoch-1 eval_loss = 0.2362, unchanged from the original epoch 1, and the same overfitting shape was present at epochs 2/3. Mean token accuracy independently peaked at epoch 1 as well (0.936 -> 0.933 -> 0.933), agreeing with the loss signal. Regularising the adapter path didn't change anything, indicating that this isn't a capacity-control issue.
+- **Experiment 1:** Doubled lora_dropout from 0.05 to 0.1 with the random seed (42) and all other hyperparameters held identical. Result: epoch-1 eval_loss = 0.2362, versus 0.2284 for the original dropout, a gap of 0.0078. It's 39x larger than the 0.0002 spread Experiment 2 attributes to checkpoint-granularity noise. The same overfitting shape was present at epochs 2/3 with validation loss rising after epoch 1. Mean token accuracy independently peaked at epoch 1 as well (0.936 -> 0.933 -> 0.933), agreeing with the loss signal. Regularising the adapter shifted the loss slightly but didn't change overfitting or epoch-1 checkpoint selection, indicating that this isn't a capacity-control issue.
 
 - **Experiment 2:** Experimented with checkpoint granularity by switching from checkpointing only at epoch boundraries to every 100 steps for a 9x finer resolution, to check whether the coarse epoch-1 snapshot was missing a better point elsewhere. The minimum loss was found at step 200, eval_loss = 0.2282, which is 0.0002 lower than the original epoch-1 checkpoint's loss of 0.2284. It rose again at step 300 and partially recovered by 400, all indicating that these loss changes were noise.
 
@@ -364,9 +364,7 @@ src/
                 # paired bootstrap
   serve.py      # FastAPI serving layer (merged model, read-only-SQL guardrail)
 results/
-  base_results.json, finetuned_results.json, fewshot_results.json  # full 1,034-example generations
-
-                            
+  base_results.json, finetuned_results.json, fewshot_results.json  # full 1,034-example generations                           
 tests/
   test_data.py                    # prompt formatting + masking-boundary correctness
   test_evaluate.py                # exact-set-match + error categorization, incl. the
