@@ -189,3 +189,7 @@ def test_schema_consistent_ignores_cte_alias_names():
     # flagged inconsistent because x isn't a real table name.
     sql = "WITH x AS (SELECT * FROM singer) SELECT * FROM x"
     assert serve._schema_consistent(sql, "singer : id (number)") is True
+
+
+def test_is_read_only_rejects_cte_hidden_delete():
+    assert serve._is_read_only("WITH x AS (DELETE FROM students RETURNING *) SELECT * FROM x") is False

@@ -2,8 +2,10 @@
 Small FastAPI serving layer for the fine-tuned text-to-SQL model.
 
 Loads the merged model (merged model has less latency than adapter). 
-Generates SQL but never executes it. Returned with an `is_read_only` 
-flag, executing it against a real database is entirely the caller's decision.
+Generates SQL but never executes it. Returned with an `is_read_only`
+and `schema_consistent` flags. Service doesn't enforce these flags or
+check that the generated SQL answers the question, only that it's 
+read-only by our metrics and references only tables in the schema.
 
 Run: uvicorn src.serve:app --reload
 """
