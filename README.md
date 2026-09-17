@@ -22,6 +22,7 @@ stack (data pipeline -> training -> rigorous evaluation -> deployment).
 - [What this measures](#what-this-measures)
 - [Error analysis](#error-analysis)
 - [How much did training actually buy?](#how-much-did-training-actually-buy)
+- [Build vs. buy](#build-vs-buy)
 - [Key engineering decisions](#key-engineering-decisions)
 - [Efficiency: adapter vs. merged](#efficiency-adapter-vs-merged)
 - [Serving](#serving)
@@ -112,6 +113,48 @@ Breaking this down by error category:
 | wrong_having | 0.4% | 0.2% | 0.3% |
 
 This round of few-shot prompting was able to fix most of the `wrong_columns` errors by itself (15.8% -> 5.8%), likely because column selection benefits from direct pattern-matching against the shown examples. `wrong_tables` improves with either approach, more so with fine tuning. `wrong_conditions` and `wrong_grouping` appear to get worse under few-shot that the plain zero-shot baseline, and fine tuning doesn't seem to improve these error categories. However, this could be due to the first-match error selection method used here, with fine tuning's removing earlier errors allowing the later errors to be observed, while the base model obscures them with earlier errors, reporting a false number. For few-shot regression specifically, the three examples were selected for table/join/group-by logic, not for demonstrating WHERE-clause logic, so they might bias the model toward answers that don't generalize to conditions.
+
+## Build vs. buy: self-hosted fine-tune vs. a hosted API
+
+Same 1,034-example validation set & 3-shot examples, run against
+`gpt-4o-mini` (OpenAI) with identical prompt discipline to the local
+few-shot baseline above, scored with the same `exact_set_match` used
+throughout this project.
+
+| | Local few-shot (base model) | API few-shot (GPT-4o-mini) | Self-hosted (fine-tuned) |
+|---|---|---|---|
+| Accuracy (strict) | 36.9% | 27.0% | 50.2% |
+| Accuracy (alias/qualifier-blind) | 37.8% | 33.0% | 51.5% |
+| Latency (s/query) | - | 0.818 | 2.583 |
+| Cost per 1,000 queries | - | $0.11 | $0.17-0.38 |
+
+**Pricing as of September 2026**
+
+### Scorer penalizes verbose but correct SQL for some models
+
+GPT-4o-mini's 'wrong' answers were structurally different from the gold answer due to extra column aliases or table-qualified columns that don't affect what the query returns, but caused them to be marked as incorrect answers. Re-scoring all four systems with aliases
+stripped and table qualifiers removed showed that systems trained or adapted directly on gold's style (local few-shot and fine-tuned) aren't affected by this (+0.9pt, +1.4pt), while systems with no exposure to gold's specific style (zero-shot base, API few-shot) have style tax (+6.5pt, +6.0pt). Both comparisons remain correct after this correction: fine-tuned vs. API, +18.6 points, 95% CI [15.6, 21.7]; local few-shot vs. API, +4.8 points, 95% CI [2.2, 7.4].
+
+This is a limitation of `get_component_sets`, where it treats aliasing and qualification as distinguishing features.
+
+### A 3B open model beats a hosted API on identical demonstrations
+
+The more suprising result was that Qwen2.5-Coder-3B-Instruct,
+given the exact same 3 few-shot examples as GPT-4o-mini, scores higher
+either way it's measured. GPT-4o-mini's own house style (adding aliases,
+qualifying columns) persisted almost as strongly with 3 demonstrations
+in-context as with none, while the smaller open model conformed to
+gold's terse style well enough that lient scoring didn't change its results. 
+
+### Latency and cost
+
+The API is faster per-query (0.818s vs. 2.583s) due to it's more optimized production serving infrastructure. 
+
+Self-hosted cost assumes a single AWS `g4dn.xlarge` (one T4), $0.526/hr
+on-demand or $0.234/hr spot as of September 2026, running continuously
+at the measured 2.583s/query throughput with 100% utilization, meaning the GPU is processing queries back-to-back with zero idle time. At high sustained query volume, self-hosting's per-query cost could beat the API's, but the API wins on cost for all other scenarios.
+
+On accuracy alone, self-hosting the fine-tuned model wins under either scoring method in this project, but for cost the answer depends on volume. 
 
 ## Key engineering decisions
 
@@ -255,6 +298,8 @@ represents a CTE reference identically to a real table reference.
   fine-tuned) use a CTE, but it's a latent gap in the scorer. `src/serve.py`'s
   `_schema_consistent` (a separate function) excludes CTE aliases
   correctly but `get_component_sets` doesn't yet.
+- **`get_component_sets` penalizes stylistically verbose-but-correct
+  SQL** (extra aliases, table-qualified columns) as if it were wrong. Discovered when doing the build-vs-buy comparison.
 - **No execution-based accuracy.** The official Spider release includes
   real SQLite databases enabling execution-match scoring (run the SQL,
   compare returned rows) in addition to structural matching. Adding execution accuracy on a
