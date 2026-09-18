@@ -94,6 +94,17 @@ def get_component_sets(sql: str, dialect: str = "sqlite") -> dict:
     parser rather than text/regex splitting, which would break on commas 
     inside string literals, function calls, and subqueries.
 
+    Table aliases (`singer AS s`) and column qualifiers (`s.name`) are
+    stripped before comparison. This also unwraps SELECT-list aliases 
+    (`avg(age) AS average_age` -> `avg(age)`) for the same reason. 
+    Stripping qualifiers means an actual self-join (`FROM employee AS 
+    e1 JOIN employee AS e2 ON e1.dept_id = e2.dept_id`) can no longer 
+    distinguish `e1.dept_id` from `e2.dept_id` post-normalization, which 
+    affects 113/1,034 (10.9%) of gold validation queries that reference the 
+    same table more than once, though not all of those hit a colliding column
+    name. Execution-based accuracy doesn't have this gap, since it checks actual 
+    returned rows rather than structural text.
+
     WHERE and HAVING conditions are split on top-level, only reordered 
     AND-conjuncts compare equal, reordered operands of an OR do not 
     (OR is kept as one atomic unit, not decomposed), and a changed comparison 
@@ -107,9 +118,22 @@ def get_component_sets(sql: str, dialect: str = "sqlite") -> dict:
     """
     tree = sqlglot.parse_one(sql, read=dialect)
 
+    # strip table aliases and column qualifiers
+    for t in tree.find_all(exp.Table):
+        t.set("alias", None)
+    for col in tree.find_all(exp.Column):
+        col.set("table", None)
+
     select = tree.find(exp.Select)
     if select is None:
         raise ValueError("No SELECT statement found in SQL: {sql!r}")
+
+    # unwrap SELECT-list aliases: avg(age) AS average_age -> avg(age)
+    select.set(
+        "expressions",
+        [e.this if isinstance(e, exp.Alias) else e for e in select.expressions],
+    )
+    
     select_exprs = frozenset(_normalize_expr(e, dialect) for e in select.expressions)
     distinct = select.args.get("distinct") is not None
 

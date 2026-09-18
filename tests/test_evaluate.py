@@ -161,3 +161,20 @@ def test_paired_bootstrap_ci_bounds_are_ordered():
     ft_correct = [1, 1, 0, 1, 1, 1, 0, 0, 1, 1]
     mean_diff, ci_low, ci_high = paired_bootstrap(base_correct, ft_correct, n_boot=2000)
     assert ci_low <= mean_diff <= ci_high
+
+
+def test_table_alias_no_false_mismatch():
+    gold = "SELECT name FROM singer WHERE age > 20"
+    gen = "SELECT s.name FROM singer AS s WHERE s.age > 20"
+    assert exact_set_match(gold, gen) is True
+
+def test_select_list_alias_no_false_mismatch():
+    gold = "SELECT avg(age) FROM singer"
+    gen = "SELECT avg(age) as average_age FROM singer"
+    assert exact_set_match(gold, gen) is True
+
+def test_different_table_caught():
+    # regression guard for alias fix, dont overstrip and match diff tables
+    gold = "SELECT name FROM singer"
+    gen = "SELECT name FROM concert"
+    assert exact_set_match(gold, gen) is False

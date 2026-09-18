@@ -12,10 +12,10 @@ stack (data pipeline -> training -> rigorous evaluation -> deployment).
 
 | | Base (zero-shot) | Base (3-shot) | Fine-tuned (LoRA, epoch 1) |
 |---|---|---|---|
-| Exact-set-match accuracy | 21.0% | 36.9% | 50.2% |
+| Exact-set-match accuracy | 31.9% | 41.1% | 59.1% |
 | n (full validation set) | 1,034 | 1,034 | 1,034 |
 
-**Improvement: +29.2 points, 95% bootstrap CI [26.0, 32.3]:** this interval excludes zero, so this is a statistically real effect on this evaluation set.
+**Improvement: +27.2 points, 95% bootstrap CI [23.9, 30.5]:** this interval excludes zero, so this is a statistically real effect on this evaluation set.
 
 ## Table of contents
 
@@ -60,15 +60,15 @@ group -> having -> order -> limit), reporting only the first mismatch found:
 
 | Category | Base | Fine-tuned |
 |---|---|---|
-| correct | 21.0% | 50.2% |
-| wrong_tables | 49.0% | 28.2% |
-| wrong_columns | 15.8% | 4.5% |
-| wrong_conditions | 9.2% | 10.3% |
-| wrong_distinct | 1.9% | 1.9% |
-| wrong_ordering | 1.4% | 1.8% |
-| wrong_grouping | 0.9% | 2.3% |
-| unparseable | 0.5% | 0.3% |
-| wrong_having | 0.4% | 0.3% |
+| correct |	31.9%	| 59.1% |
+| wrong_tables |	23.3%	| 12.3% |
+| wrong_conditions | 17.6% | 16.2% |
+| wrong_columns |	12.2%	| 4.7% |
+| wrong_grouping | 6.0% |	2.5% |
+| wrong_distinct | 4.6% |	2.0% |
+| wrong_ordering | 3.4% |	2.6% |
+| wrong_having | 0.5% |	0.3% |
+| unparseable |	0.5% | 0.3% |
 
 Fine-tuning substantially improved schema grounding (table
 selection errors nearly halved, column selection errors dropped by more
@@ -91,10 +91,10 @@ Experimented on improving the zero-shot baseline with no training by giving the 
 
 | | Base (zero-shot) | Base (3-shot) | Fine-tuned |
 |---|---|---|---|
-| Exact-set-match accuracy | 21.0% | 36.9% | 50.2% |
+| Exact-set-match accuracy | 31.9% | 41.1% | 59.1% |
 
-**Few-shot vs. zero-shot base: +16.0 points, 95% CI [13.4, 18.6].**
-**Fine-tuned vs. few-shot base: +13.3 points, 95% CI [10.3, 16.2].**
+**Few-shot vs. zero-shot base: +9.2 points, 95% CI [6.6, 11.8]**
+**Fine-tuned vs. few-shot base: +18.0 points, 95% CI [14.8, 21.2]**
 Both intervals exclude zero. Roughly half of the total improvement over
 zero-shot is available with no training simply by showing the model three worked examples, but fine-tuning still adds a further statistically real improvement on top of that.
 
@@ -102,15 +102,15 @@ Breaking this down by error category:
 
 | Category | Base | Few-shot | Fine-tuned |
 |---|---|---|---|
-| correct | 21.0% | 36.9% | 50.2% |
-| wrong_tables | 49.0% | 39.7% | 28.2% |
-| wrong_columns | 15.8% | 5.8% | 4.5% |
-| wrong_conditions | 9.2% | 11.9% | 10.3% |
-| wrong_distinct | 1.9% | 1.5% | 1.9% |
-| wrong_ordering | 1.4% | 2.4% | 1.8% |
-| wrong_grouping | 0.9% | 1.5% | 2.3% |
-| unparseable | 0.5% | 0.1% | 0.3% |
-| wrong_having | 0.4% | 0.2% | 0.3% |
+| correct |	31.9% |	41.1%	| 59.1% |
+| wrong_tables |	23.3%	| 23.0% |	12.3% |
+| wrong_columns |	12.2% |	5.5% |	4.7% |
+| wrong_conditions | 17.6% |	21.8%	| 16.2% |
+| wrong_distinct |	4.6% |	1.7%	| 2.0% |
+| wrong_ordering |	3.4% |	2.8% |	2.6% |
+| wrong_grouping |	6.0% |	3.8% |	2.5% |
+| unparseable |	0.5% |	0.1% |	0.3% |
+| wrong_having | 0.5% |	0.2% |	0.3% |
 
 This round of few-shot prompting was able to fix most of the `wrong_columns` errors by itself (15.8% -> 5.8%), likely because column selection benefits from direct pattern-matching against the shown examples. `wrong_tables` improves with either approach, more so with fine tuning. `wrong_conditions` and `wrong_grouping` appear to get worse under few-shot that the plain zero-shot baseline, and fine tuning doesn't seem to improve these error categories. However, this could be due to the first-match error selection method used here, with fine tuning's removing earlier errors allowing the later errors to be observed, while the base model obscures them with earlier errors, reporting a false number. For few-shot regression specifically, the three examples were selected for table/join/group-by logic, not for demonstrating WHERE-clause logic, so they might bias the model toward answers that don't generalize to conditions.
 
@@ -123,19 +123,11 @@ throughout this project.
 
 | | Local few-shot (base model) | API few-shot (GPT-4o-mini) | Self-hosted (fine-tuned) |
 |---|---|---|---|
-| Accuracy (strict) | 36.9% | 27.0% | 50.2% |
-| Accuracy (alias/qualifier-blind) | 37.8% | 33.0% | 51.5% |
+| Accuracy | 41.1% | 37.2% | 59.1% |
 | Latency (s/query) | - | 0.818 | 2.583 |
 | Cost per 1,000 queries | - | $0.11 | $0.17-0.38 |
 
 **Pricing as of September 2026**
-
-### Scorer penalizes verbose but correct SQL for some models
-
-GPT-4o-mini's 'wrong' answers were structurally different from the gold answer due to extra column aliases or table-qualified columns that don't affect what the query returns, but caused them to be marked as incorrect answers. Re-scoring all four systems with aliases
-stripped and table qualifiers removed showed that systems trained or adapted directly on gold's style (local few-shot and fine-tuned) aren't affected by this (+0.9pt, +1.4pt), while systems with no exposure to gold's specific style (zero-shot base, API few-shot) have style tax (+6.5pt, +6.0pt). Both comparisons remain correct after this correction: fine-tuned vs. API, +18.6 points, 95% CI [15.6, 21.7]; local few-shot vs. API, +4.8 points, 95% CI [2.2, 7.4].
-
-This is a limitation of `get_component_sets`, where it treats aliasing and qualification as distinguishing features.
 
 ### A 3B open model beats a hosted API on identical demonstrations
 
@@ -219,6 +211,23 @@ the real, saved 1,034-example results in `results/`: base accuracy moved
 than something that happened to favor one model. The statistically
 significant improvement was unchanged and numbers in this README are post-fix.
 `tests/test_results_reproduce_readme.py` pins them against regression.
+
+**Table-alias and column-qualifier false mismatches:** `get_component_sets`
+compared raw rendered SQL text for tables and columns, which includes
+table aliases (`singer AS s` normalized to `"singerass"`, never equal
+to gold's `"singer"`) and column qualifiers (`s.name` never equal to
+gold's `name`) which is cosmetic naming causing mismatching. Found while investigating a low accuracy score on a hosted-API comparison that turned out to reflect the API's more verbose SQL style
+(consistent aliasing, qualified columns) rather than lower real
+accuracy. Fixed by stripping table aliases and column qualifiers before
+comparison, and unwrapping SELECT-list aliases the same way LIMIT/
+DISTINCT/HAVING were added as scored components previously. Re-run
+against the same real, saved results: base accuracy moved
+21.0%->31.9%, fine-tuned 50.2%->59.1%, API few-shot 27.0%->37.2%, all
+three real corrections moved in the same direction (undercounting). The fine-tuned-vs-base
+statistically significant improvement changed from +29.2 to +27.2
+points but remained real and large. As a remaining gap, stripping
+qualifiers can't distinguish two differently-aliased references to the
+same table in a self-join. Execution based accuracy isn't affected by this.
 
 **Tokenizer versioning:** Every
 automated test for `src/serve.py` mocks the model and tokenizer to avoid needing a GPU in CI, which means they verify the
