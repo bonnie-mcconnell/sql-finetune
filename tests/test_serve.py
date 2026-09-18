@@ -192,4 +192,5 @@ def test_schema_consistent_ignores_cte_alias_names():
 
 
 def test_is_read_only_rejects_cte_hidden_delete():
-    assert serve._is_read_only("WITH x AS (DELETE FROM students RETURNING *) SELECT * FROM x") is False
+    sql = "WITH x AS (DELETE FROM students RETURNING *) SELECT * FROM x"
+    assert serve._is_read_only(sql) is False
