@@ -10,7 +10,7 @@ query structure from superficial formatting differences.
 
 import pytest
 
-from src.evaluate import categorize_error, exact_set_match, get_component_sets, paired_bootstrap
+from src.evaluate import categorize_error, exact_set_match, get_component_sets, paired_bootstrap, clean_sql
 
 CASES = [
     (
@@ -178,3 +178,20 @@ def test_different_table_caught():
     gold = "SELECT name FROM singer"
     gen = "SELECT name FROM concert"
     assert exact_set_match(gold, gen) is False
+
+
+def test_string_literal_case_preserved():
+    a = get_component_sets("SELECT * FROM t WHERE name = 'Math'")
+    b = get_component_sets("SELECT * FROM t WHERE name = 'math'")
+    assert a["where"] != b["where"]
+
+
+def test_identifier_case_normalized():
+    a = get_component_sets("SELECT Name FROM Singer")
+    b = get_component_sets("select name from singer")
+    assert a["select"] == b["select"] and a["tables"] == b["tables"]
+
+
+def test_truncated_generation_cleaned():
+    raw = "```sql\nSELECT * FROM singer WHERE age > 20"
+    assert clean_sql(raw) == "SELECT * FROM singer WHERE age > 20"
