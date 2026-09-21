@@ -25,10 +25,13 @@ def clean_sql(raw_output: str) -> str:
     pretraining, regardless of the explicit "no explanation" system
     prompt. This is applied to every generation, not conditionally, 
     since the fence is invalid SQL syntax that would break any downstream parser.
+    Handles truncated generation by only stripping the opening fence.
     """
     match = re.search(r"```(?:sql)?\s*(.*?)```", raw_output, re.DOTALL)
     if match:
         raw_output = match.group(1)
+    else:
+        raw_output = re.sub(r"^```(?:sql)?\s*", "", raw_output)
     return raw_output.strip().rstrip(";").strip()
 
 
@@ -63,7 +66,14 @@ def generate_sql(model, tokenizer, question: str, schema: str, max_new_tokens: i
 
 
 def _normalize_expr(e, dialect: str = "sqlite") -> str:
-    return e.sql(dialect=dialect).lower().replace(" ", "")
+    """
+    Render expression to normalized SQL text.
+    Only exp.Identifier nodes are lowercased (never string literals)
+    """
+    e = e.copy()
+    for ident in e.find_all(exp.Identifier):
+        ident.set("this", ident.this.lower())
+    return e.sql(dialect=dialect).replace(" ", "")
 
 
 def _split_and_conditions(condition: exp.Expression) -> list[exp.Expression]:
