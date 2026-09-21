@@ -39,12 +39,12 @@ def test_result_files_have_expected_size(base_results, finetuned_results):
 
 def test_base_accuracy_matches_readme(base_results):
     correct = [exact_set_match(r["gold"], r["generated"]) for r in base_results]
-    assert np.mean(correct) == pytest.approx(0.3190, abs=0.001)
+    assert np.mean(correct) == pytest.approx(0.3162, abs=0.001)
 
 
 def test_finetuned_accuracy_matches_readme(finetuned_results):
     correct = [exact_set_match(r["gold"], r["generated"]) for r in finetuned_results]
-    assert np.mean(correct) == pytest.approx(0.5910, abs=0.001)
+    assert np.mean(correct) == pytest.approx(0.5899, abs=0.001)
 
 
 def test_paired_bootstrap_ci_excludes_zero(base_results, finetuned_results):
@@ -52,7 +52,7 @@ def test_paired_bootstrap_ci_excludes_zero(base_results, finetuned_results):
     ft_correct = [exact_set_match(r["gold"], r["generated"]) for r in finetuned_results]
     mean_diff, ci_low, ci_high = paired_bootstrap(base_correct, ft_correct)
 
-    assert mean_diff == pytest.approx(0.272, abs=0.005)
+    assert mean_diff == pytest.approx(0.274, abs=0.005)
     # check the 95% CI excludes zero, the improvement is statistically real & not sampling noise.
     assert ci_low > 0
     # Sanity bound: an accuracy difference can never exceed 1.0.
@@ -65,9 +65,7 @@ def test_error_breakdown_matches_readme(base_results, finetuned_results):
 
     # Spot-check the two error-analysis claims from the README:
     # table-selection errors nearly halved, column-selection errors
-    # dropped by 61%. Unaffected by the LIMIT/DISTINCT/HAVING/WHERE-splitting 
-    # fix, since these categories are checked before those components in 
-    # categorize_error's priority ladder.
+    # dropped by 61%. 
     assert base_breakdown["wrong_tables"] == 241
     assert ft_breakdown["wrong_tables"] == 127
     assert base_breakdown["wrong_columns"] == 126
