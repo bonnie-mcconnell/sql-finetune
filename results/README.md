@@ -1,9 +1,13 @@
 # Results
 
-`base_results.json` and `finetuned_results.json` are the full
-1,034-example validation-set generations from the base and fine-tuned
-models respectively. Each is a JSON list of
-`{"db_id", "question", "gold", "generated"}` records.
+`base_results.json`, `fewshot_results.json`, and `finetuned_results.json`
+are the full 1,034-example validation-set generations from the base
+model (zero-shot), base model (3-shot), and fine-tuned model
+respectively. `api_results.json` is the same validation set run
+against a hosted API (GPT-4o-mini) instead of a local model - see the
+README's "Build vs. buy" section. Each file is a JSON list of
+`{"db_id", "question", "gold", "generated"}` records (`api_results.json`
+also carries `latency_s`, `prompt_tokens`, `completion_tokens` per row).
 
 `tests/test_results_reproduce_readme.py` runs these through the actual
 scoring code in `src/evaluate.py` and asserts the results match every
