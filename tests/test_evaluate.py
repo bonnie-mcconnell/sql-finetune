@@ -10,7 +10,13 @@ query structure from superficial formatting differences.
 
 import pytest
 
-from src.evaluate import categorize_error, exact_set_match, get_component_sets, paired_bootstrap, clean_sql
+from src.evaluate import (
+    categorize_error,
+    clean_sql,
+    exact_set_match,
+    get_component_sets,
+    paired_bootstrap,
+)
 
 CASES = [
     (

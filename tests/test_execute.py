@@ -58,14 +58,15 @@ def test_execution_match_true(db_path):
     match, err = execution_match(
         db_path,
         "SELECT name FROM singer WHERE age = (SELECT MIN(age) FROM singer)",
-        "SELECT s1.name FROM singer s1 WHERE NOT EXISTS (SELECT 1 FROM singer s2 WHERE s2.age < s1.age)",
+        "SELECT s1.name FROM singer s1 WHERE NOT EXISTS"
+        " (SELECT 1 FROM singer s2 WHERE s2.age < s1.age)",
     )
     assert match is True
     assert err is None
 
 
 def test_execution_match_false(db_path):
-    match, err = execution_match(
+    match, _ = execution_match(
         db_path,
         "SELECT name FROM singer WHERE country = 'France'",
         "SELECT name FROM singer WHERE country = 'Egypt'",
@@ -74,7 +75,7 @@ def test_execution_match_false(db_path):
 
 
 def test_execution_match_string_literal(db_path):
-    match, err = execution_match(
+    match, _ = execution_match(
         db_path,
         "SELECT name FROM singer WHERE country = 'France'",
         "SELECT name FROM singer WHERE country = 'FRANCE'",
@@ -83,18 +84,22 @@ def test_execution_match_string_literal(db_path):
 
 
 def test_execution_match_gen_failure_false(db_path):
-    match, err = execution_match(db_path, "SELECT name FROM singer", "SELECT nonexistent_col FROM singer")
+    match, err = execution_match(db_path, 
+                                 "SELECT name FROM singer", 
+                                 "SELECT nonexistent_col FROM singer")
     assert match is False
     assert err is not None
 
 
 def test_execution_match_gold_failure_none(db_path):
-    match, err = execution_match(db_path, "SELECT nonexistent_col FROM singer", "SELECT name FROM singer")
+    match, _ = execution_match(db_path, 
+                                 "SELECT nonexistent_col FROM singer", 
+                                 "SELECT name FROM singer")
     assert match is None
 
 
 def test_execution_match_order_by(db_path):
-    match, err = execution_match(
+    match, _ = execution_match(
         db_path,
         "SELECT name FROM singer ORDER BY age",
         "SELECT name FROM singer ORDER BY age DESC",
@@ -104,9 +109,21 @@ def test_execution_match_order_by(db_path):
 
 def test_score_execution_separates_exec_and_gold_failures(db_path):
     results = [
-        {"db_id": "test", "gold": "SELECT name FROM singer", "generated": "SELECT name FROM singer"},
-        {"db_id": "test", "gold": "SELECT name FROM singer", "generated": "SELECT bad_col FROM singer"},
-        {"db_id": "test", "gold": "SELECT bad_col FROM singer", "generated": "SELECT name FROM singer"},
+        {
+            "db_id": "test",
+            "gold": "SELECT name FROM singer",
+            "generated": "SELECT name FROM singer",
+        },
+        {
+            "db_id": "test",
+            "gold": "SELECT name FROM singer",
+            "generated": "SELECT bad_col FROM singer",
+        },
+        {
+            "db_id": "test",
+            "gold": "SELECT bad_col FROM singer",
+            "generated": "SELECT name FROM singer",
+        },
     ]
     result = score_execution(results, str(Path(db_path).parent))
     assert result["correct"] == 1
