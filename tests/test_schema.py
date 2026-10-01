@@ -19,8 +19,8 @@ def con():
 
 def test_introspect_schema_format(con):
     schema = introspect_schema(con)
-    assert "members : member_id (number), full_name (text), monthly_fee (number)" in schema
-    assert "classes : class_id (number), class_name (text)" in schema
+    assert "members : member_id (number) , full_name (text) , monthly_fee (number)" in schema
+    assert "classes : class_id (number) , class_name (text)" in schema
     assert " | " in schema
 
 
@@ -49,4 +49,11 @@ def test_introspect_schema_text_type_default():
     con = sqlite3.connect(":memory:")
     con.execute("CREATE TABLE t (x SOME_WEIRD_TYPE)")
     schema = introspect_schema(con)
-    assert "x (text)" in schema
+    assert "x (others)" in schema
+
+
+def test_bool_maps_to_others():
+    con = sqlite3.connect(":memory:")
+    con.execute("CREATE TABLE t (flag bool)")
+    schema = introspect_schema(con)
+    assert "flag (others)" in schema
