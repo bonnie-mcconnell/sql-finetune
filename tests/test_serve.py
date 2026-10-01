@@ -194,3 +194,18 @@ def test_schema_consistent_ignores_cte_alias_names():
 def test_is_read_only_rejects_cte_hidden_delete():
     sql = "WITH x AS (DELETE FROM students RETURNING *) SELECT * FROM x"
     assert serve._is_read_only(sql) is False
+
+
+def test_attach_statement_currently_fails_to_parse_under_pinned_sqlglot():
+    """
+    ATTACH DATABASE doesn't parse with sqlglot==25.20.2. _is_read_only
+    therefore rejects it via its existing parse-failure fallback
+    (`except Exception: return False`), not via the _UNSAFE_EXPR_TYPES
+    denylist. A future sqlglot upgrade could reopen this
+    gap, repeating the original CTE-hidden-DELETE bug's shape.
+    The version-independent defense is src/sandbox.py's
+    authorizer, which blocks ATTACH at actual execution time regardless
+    of what any sqlglot version parses
+    """
+    sql = "WITH x AS (ATTACH DATABASE '/tmp/pwned.db' AS pwned) SELECT * FROM x"
+    assert serve._is_read_only(sql) is False

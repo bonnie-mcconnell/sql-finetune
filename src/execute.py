@@ -9,6 +9,8 @@ from collections import Counter
 import sqlglot
 from sqlglot import exp
 
+from .sandbox import open_readonly
+
 
 def has_order_by(sql: str, dialect: str = "sqlite") -> bool:
     """True if query has a top-level ORDER BY, meaning row order
@@ -29,10 +31,7 @@ def run_query(db_path: str, sql: str):
     each row's values sorted by string representation/
     Returns (None, error_message) on any failure.
     """
-    import sqlite3
-
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    con.set_progress_handler(lambda: 1, 1000)
+    con = open_readonly(db_path)
     try:
         rows = con.execute(sql).fetchall()
         rows = [tuple(sorted(row, key=str)) for row in rows]
