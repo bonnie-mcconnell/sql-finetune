@@ -21,11 +21,18 @@ _ALLOWED_ACTIONS = frozenset({
     sqlite3.SQLITE_TRANSACTION,
 })
 
+# informational pragma allowed for introspection
+_SAFE_PRAGMAS = frozenset({
+    "table_info", "table_xinfo", "foreign_key_list", "index_list", "index_info",
+})
+
 # abort query after ~1000 interval SQLite VM steps
 _PROGRESS_STEPS = 1000
 
 
 def _readonly_authorizer(action, arg1, arg2, dbname, source):
+    if action == sqlite3.SQLITE_PRAGMA:
+        return sqlite3.SQLITE_OK if arg1 in _SAFE_PRAGMAS else sqlite3.SQLITE_DENY
     return sqlite3.SQLITE_OK if action in _ALLOWED_ACTIONS else sqlite3.SQLITE_DENY
 
 

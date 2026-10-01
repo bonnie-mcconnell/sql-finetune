@@ -64,3 +64,15 @@ def test_mode_ro_doesnt_stop_writes_via_attach(tmp_path):
     con = sqlite3.connect(f"file:{main_db}?mode=ro", uri=True)
     con.executescript(f"ATTACH DATABASE '{target}' AS atk; CREATE TABLE atk.evil (x);")
     assert target.exists()  # mode=ro alone did not prevent this
+
+
+def test_table_info_pragma_allowed(db_path):
+    con = open_readonly(db_path)
+    cols = con.execute('PRAGMA table_info("t")').fetchall()
+    assert len(cols) == 2  # x, y from the fixture
+
+
+def test_dangerous_pragma_blocked(db_path):
+    con = open_readonly(db_path)
+    with pytest.raises(sqlite3.DatabaseError):
+        con.execute("PRAGMA journal_mode=WAL")
