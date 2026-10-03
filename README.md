@@ -338,6 +338,38 @@ An unmerged LoRA adapter **more than doubles** per-example latency versus
 the base model on this hardware, because every adapted layer pays for a frozen base-weight matmul *and* a separate small adapter matmul, on every forward pass, at every generation step. Merging (`model.merge_and_unload()`, which computes `W_base + (B @ A * scaling)` once and folds it into ordinary weights) recovers 95.2% of that overhead, landing within ~6% of the base model's latency. Always merge the model before deployment to decrease unnecessary latency.
 `src/serve.py` loads the merged model for this reason.
 
+## Generalizing past Spider
+
+Everything above was evaluated against Spider's own databases. To test whether fine-tuning actually generalizes
+to a schema it has never seen anything resembling, or whether it just got very good at Spider's specific conventions, I tested generating and execution-testing with two novel SQLite databases - a gym
+membership tracker and a small-town library - using different
+domains and naming conventions (snake_case vs. PascalCase, different
+column names throughout). Every gold SQL answer was verified by executing it
+against the real data before any model ever saw them. Schema
+introspected at runtime via `src/schema.py` (sqlite_master +
+`PRAGMA table_info`), no lookup into the Spider training schema
+dataset, confirmed byte-for-byte against Spider's own training format
+first (`src/schema.py`'s `_TYPE_MAP` includes `BOOL -> "others"` and
+defaults unrecognized types to `"others"` rather than `"text"`).
+
+**10/13 correct (76.9%), execution-based scoring**, against 59.5% on
+the full 1,034-example Spider validation set. This number is higher than in-distribution accuracy, but with
+n=13, that's almost certainly sample-size noise and these two databases
+not being calibrated to Spider's difficulty distribution, not a real
+effect. This indicates that capability broadly transfers to unfamiliar schemas, and the 3 failures are specific and identifiable, not a wholesale breakdown.
+
+### The 3 failures, each a distinct, real gap
+
+1. **Selected `*` instead of the asked-for column** ("which classes have
+   capacity > 15" -> `SELECT *` instead of `SELECT class_name`) - correct filter but wrong projection.
+2. **Missed a NULL-check pattern**: "books currently on loan (not yet
+   returned)" needs `ReturnDate IS NULL`; generated an arbitrary date
+   threshold (`ReturnDate > "2016-01-01"`) instead
+3. **Wrong join path through a 3-table junction query**: "patrons and
+   titles of books they've borrowed" needs `Patrons -> Loans -> Books`;
+   generated a direct `Patrons -> Books` join comparing `PatronID` to
+   `BookID` - two unrelated ID columns that happen to both be integers.
+
 ## Serving
 
 **The read-only-SQL guardrail as an allowlist checking the whole tree:** `_is_read_only`

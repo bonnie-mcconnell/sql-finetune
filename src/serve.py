@@ -10,14 +10,19 @@ read-only by our metrics and references only tables in the schema.
 Run: uvicorn src.serve:app --reload
 """
 
+import os
 import re
+import tempfile
 
 import sqlglot
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlglot import exp
 
 from .evaluate import generate_sql
+from .sandbox import open_readonly
+from .schema import introspect_schema
+from .upload import validate_upload
 
 # torch and transformers imported lazily for testing/CI
 
@@ -59,6 +64,15 @@ class GenerateResponse(BaseModel):
     sql: str
     is_read_only: bool
     schema_consistent: bool | None
+
+
+class GeneralizeResponse(BaseModel):
+    question: str
+    sql: str
+    is_read_only: bool
+    schema_consistent: bool | None
+    result: list[list] | None
+    error: str | None
 
 
 _UNSAFE_EXPR_TYPES = (
@@ -164,6 +178,59 @@ def generate(req: GenerateRequest):
         is_read_only=_is_read_only(sql),
         schema_consistent=_schema_consistent(sql, req.db_schema),
     )
+
+
+@app.post("/generalize", response_model=GeneralizeResponse)
+async def generalize(question: str = Form(...), db_file: UploadFile = File(...)):
+    """
+    Like /generate but against a user-uploaded SQLite database instead of caller-supplied
+    schema string. Introspects the schema at runtime, runs generated SQL and
+    returns the rows through src/sandbox's read-only connection. 
+    """
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="question must be non-empty")
+
+    data = await db_file.read()
+    try:
+        validate_upload(data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+    tmp.write(data)
+    tmp.close()
+
+    con = None
+    try:
+        con = open_readonly(tmp.name)
+        try:
+            schema = introspect_schema(con)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        model, tokenizer = get_model_and_tokenizer()
+        sql = generate_sql(model, tokenizer, question, schema)
+        read_only = _is_read_only(sql)
+        consistent = _schema_consistent(sql, schema)
+
+        result, error = None, None
+        if read_only:
+            try:
+                result = [list(row) for row in con.execute(sql).fetchall()]
+            except Exception as e: # noqa: BLE001
+                error = str(e)
+        else:
+            error = "generated SQL failed the read-only safety check and was not executed"
+
+        return GeneralizeResponse(
+            question=question, sql=sql, is_read_only=read_only,
+            schema_consistent=consistent, result=result, error=error,
+        )
+    finally:
+        if con is not None:
+            con.close()
+        os.unlink(tmp.name)
+
 
 
 @app.get("/health")
